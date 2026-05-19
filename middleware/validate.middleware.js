@@ -60,7 +60,7 @@ const employeeRegisterValidator = [
 // ─── Employer Registration Validators ────────────────────────────────────────
 const employerRegisterValidator = [
   body("firstName").trim().notEmpty().withMessage("First name is required"),
-  body("lastName").trim().notEmpty().withMessage("Last name is required"),
+  body("lastName").trim().optional({ checkFalsy: true }), // optional — derived from user.name when not provided
   body("email").trim().isEmail().withMessage("Valid email is required").normalizeEmail(),
   body("phone")
     .trim()
@@ -69,11 +69,12 @@ const employerRegisterValidator = [
   body("company").trim().notEmpty().withMessage("Company name is required"),
   body("department")
     .notEmpty().withMessage("Department is required")
-    .isIn(["engineering", "product", "design", "marketing", "sales", "hr", "finance", "operations", "other"])
+    .isIn(["engineering", "product", "design", "marketing", "sales", "hr", "finance", "operations", "legal", "other"])
     .withMessage("Invalid department"),
   body("authorized")
     .notEmpty().withMessage("Authorization status is required")
-    .isIn(["yes", "no"]).withMessage("Authorization must be yes or no"),
+    .custom((val) => ["yes", "no", true, false, "true", "false"].includes(val))
+    .withMessage("Authorization must be yes or no"),
   validate,
 ];
 
