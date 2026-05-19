@@ -1,109 +1,182 @@
-// Email utility using fetch() to call Resend API over HTTPS port 443
-// This works on Railway (SMTP ports 25/587/465 are blocked, but 443 is always open)
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM_EMAIL = process.env.EMAIL_FROM || "onboarding@resend.dev";
+// utils/email.utils.js
 
 const sendEmail = async ({ to, subject, html }) => {
-  // If no Resend key, log to console (dev fallback)
-  if (!RESEND_API_KEY) {
-    console.log(`[Email DEV] To: ${to} | Subject: ${subject}`);
-    return { success: true };
-  }
+  // ───── Brevo (Primary) ─────
+  if (process.env.BREVO_API_KEY) {
+    try {
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": process.env.BREVO_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sender: {
+            name: "SkillKwiz",
+            email:
+              process.env.EMAIL_FROM || "safuramariyam123@gmail.com",
+          },
+          to: [{ email: to }],
+          subject,
+          htmlContent: html,
+        }),
+      });
 
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
-    });
+      const data = await response.json();
 
-    const data = await res.json();
+      if (!response.ok) {
+        console.error("Brevo Error:", data);
+        return { success: false, error: data.message };
+      }
 
-    if (!res.ok) {
-      console.error(`[Email] Resend error:`, data);
-      return { success: false, error: data.message };
+      console.log(`Brevo email sent to ${to}`);
+      return { success: true };
+    } catch (error) {
+      console.error("Brevo Fetch Error:", error.message);
     }
-
-    console.log(`[Email] Sent to ${to}: ${data.id}`);
-    return { success: true, id: data.id };
-  } catch (err) {
-    console.error(`[Email] Fetch error:`, err.message);
-    return { success: false, error: err.message };
   }
+
+  // ───── Resend Fallback ─────
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from:
+            process.env.RESEND_FROM ||
+            process.env.EMAIL_FROM ||
+            "onboarding@resend.dev",
+          to,
+          subject,
+          html,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error("Resend Error:", data);
+        return { success: false, error: data.message };
+      }
+
+      console.log(`Resend email sent to ${to}`);
+      return { success: true };
+    } catch (error) {
+      console.error("Resend Fetch Error:", error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  console.log(`DEV MODE → Email to: ${to}`);
+  return { success: true };
 };
 
-// ─── Send OTP Email ───────────────────────────────────────────────────────────
+// ───── OTP Email ─────
 const sendOtpEmail = (to, otp) =>
   sendEmail({
     to,
     subject: "Your SkillKwiz OTP Code",
     html: `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #e0e0e0;border-radius:8px;">
-        <h2 style="color:#00418d;text-align:center;">SkillKwiz</h2>
-        <h3 style="color:#333;">Your Verification Code</h3>
-        <p style="color:#555;">Use this OTP to verify your email. Valid for <strong>10 minutes</strong>.</p>
-        <div style="background:#f0f4ff;border:2px dashed #00418d;border-radius:8px;padding:20px;text-align:center;margin:20px 0;">
-          <span style="font-size:36px;font-weight:bold;color:#00418d;letter-spacing:8px;">${otp}</span>
+      <div style="font-family:Arial;padding:20px;">
+        <h2>SkillKwiz OTP Verification</h2>
+        <p>Your OTP code is:</p>
+
+        <div style="
+          font-size:32px;
+          font-weight:bold;
+          letter-spacing:6px;
+          color:#00418d;
+          margin:20px 0;
+        ">
+          ${otp}
         </div>
-        <p style="color:#888;font-size:12px;">If you did not request this, please ignore this email.</p>
+
+        <p>This OTP is valid for 10 minutes.</p>
       </div>
     `,
   });
 
-// ─── Send Welcome Email ───────────────────────────────────────────────────────
+// ───── Welcome Email ─────
 const sendWelcomeEmail = (to, name, role) =>
   sendEmail({
     to,
     subject: "Welcome to SkillKwiz!",
     html: `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;">
-        <h2 style="color:#00418d;">Welcome to SkillKwiz, ${name}!</h2>
-        <p>Your <strong>${role}</strong> account has been successfully created.</p>
-        <a href="${process.env.CLIENT_URL || "https://skillkwiz-frontend.vercel.app"}/services"
-           style="display:inline-block;padding:12px 24px;background:#f73e5d;color:white;border-radius:6px;text-decoration:none;font-weight:bold;margin-top:16px;">
+      <div style="font-family:Arial;padding:20px;">
+        <h2>Welcome, ${name}!</h2>
+
+        <p>
+          Your <strong>${role}</strong> account has been created successfully.
+        </p>
+
+        <a
+          href="${process.env.CLIENT_URL ||
+      "https://skillkwiz-frontend.vercel.app"
+      }"
+          style="
+            display:inline-block;
+            padding:12px 24px;
+            background:#f73e5d;
+            color:white;
+            text-decoration:none;
+            border-radius:6px;
+            margin-top:16px;
+          "
+        >
           Get Started
         </a>
       </div>
     `,
   });
 
-// ─── Send Assessment Confirmation ─────────────────────────────────────────────
+// ───── Assessment Confirmation ─────
 const sendAssessmentConfirmation = (to, name, details) =>
   sendEmail({
     to,
     subject: "Assessment Scheduled - SkillKwiz",
     html: `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;">
-        <h2 style="color:#00418d;">Assessment Confirmed!</h2>
-        <p>Hi ${name}, your assessment has been scheduled.</p>
-        <table style="width:100%;border-collapse:collapse;margin-top:16px;">
-          <tr><td style="padding:8px;border:1px solid #eee;color:#888;">Company</td><td style="padding:8px;border:1px solid #eee;font-weight:bold;text-transform:capitalize;">${details.company}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #eee;color:#888;">Date</td><td style="padding:8px;border:1px solid #eee;">${details.date}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #eee;color:#888;">Time</td><td style="padding:8px;border:1px solid #eee;">${details.time}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #eee;color:#888;">Centre</td><td style="padding:8px;border:1px solid #eee;">${details.centre}</td></tr>
-        </table>
+      <div style="font-family:Arial;padding:20px;">
+        <h2>Assessment Confirmed</h2>
+
+        <p>Hello ${name}, your assessment has been scheduled.</p>
+
+        <ul>
+          <li><strong>Company:</strong> ${details.company}</li>
+          <li><strong>Date:</strong> ${details.date}</li>
+          <li><strong>Time:</strong> ${details.time}</li>
+          <li><strong>Centre:</strong> ${details.centre}</li>
+        </ul>
       </div>
     `,
   });
 
-// ─── Send Assessment Request Notification ─────────────────────────────────────
-const sendAssessmentRequestNotification = (to, candidateName, employerCompany, skills) =>
+// ───── Assessment Invitation ─────
+const sendAssessmentRequestNotification = (
+  to,
+  candidateName,
+  employerCompany,
+  skills
+) =>
   sendEmail({
     to,
-    subject: `Assessment Invitation from ${employerCompany} - SkillKwiz`,
+    subject: `Assessment Invitation from ${employerCompany}`,
     html: `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;">
-        <h2 style="color:#00418d;">You've Been Invited for an Assessment!</h2>
+      <div style="font-family:Arial;padding:20px;">
+        <h2>Assessment Invitation</h2>
+
         <p>Hi ${candidateName},</p>
-        <p><strong>${employerCompany}</strong> has requested a skill assessment for: <strong>${(skills || []).join(", ")}</strong></p>
-        <a href="${process.env.CLIENT_URL || "https://skillkwiz-frontend.vercel.app"}/services"
-           style="display:inline-block;padding:12px 24px;background:#f73e5d;color:white;border-radius:6px;text-decoration:none;font-weight:bold;margin-top:16px;">
-          View Invitation
-        </a>
+
+        <p>
+          <strong>${employerCompany}</strong> invited you for an assessment.
+        </p>
+
+        <p>
+          Skills: <strong>${(skills || []).join(", ")}</strong>
+        </p>
       </div>
     `,
   });
