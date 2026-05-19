@@ -1,45 +1,44 @@
-const nodemailer = require("nodemailer");
+// Email utility using fetch() to call Resend API over HTTPS port 443
+// This works on Railway (SMTP ports 25/587/465 are blocked, but 443 is always open)
 
-// Create transporter with Railway-compatible settings
-const createTransporter = () => {
-  return nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    tls: {
-      rejectUnauthorized: false,
-      ciphers: "SSLv3",
-    },
-    // Generous timeouts for Railway's network
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 60000,
-    // Force IPv4 — Railway IPv6 causes Gmail SMTP timeouts
-    family: 4,
-  });
-};
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const FROM_EMAIL = process.env.EMAIL_FROM || "onboarding@resend.dev";
 
-// Safe send — NEVER throws, always resolves
-const safeSend = async (mailOptions) => {
+const sendEmail = async ({ to, subject, html }) => {
+  // If no Resend key, log to console (dev fallback)
+  if (!RESEND_API_KEY) {
+    console.log(`[Email DEV] To: ${to} | Subject: ${subject}`);
+    return { success: true };
+  }
+
   try {
-    const transporter = createTransporter();
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[Email] Sent to ${mailOptions.to}: ${info.messageId}`);
-    return { success: true, messageId: info.messageId };
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error(`[Email] Resend error:`, data);
+      return { success: false, error: data.message };
+    }
+
+    console.log(`[Email] Sent to ${to}: ${data.id}`);
+    return { success: true, id: data.id };
   } catch (err) {
-    console.error(`[Email] Failed to send to ${mailOptions.to}:`, err.message);
+    console.error(`[Email] Fetch error:`, err.message);
     return { success: false, error: err.message };
   }
 };
 
-// Send OTP Email
+// ─── Send OTP Email ───────────────────────────────────────────────────────────
 const sendOtpEmail = (to, otp) =>
-  safeSend({
-    from: `SkillKwiz <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+  sendEmail({
     to,
     subject: "Your SkillKwiz OTP Code",
     html: `
@@ -55,10 +54,9 @@ const sendOtpEmail = (to, otp) =>
     `,
   });
 
-// Send Welcome Email
+// ─── Send Welcome Email ───────────────────────────────────────────────────────
 const sendWelcomeEmail = (to, name, role) =>
-  safeSend({
-    from: `SkillKwiz <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+  sendEmail({
     to,
     subject: "Welcome to SkillKwiz!",
     html: `
@@ -73,10 +71,9 @@ const sendWelcomeEmail = (to, name, role) =>
     `,
   });
 
-// Send Assessment Confirmation
+// ─── Send Assessment Confirmation ─────────────────────────────────────────────
 const sendAssessmentConfirmation = (to, name, details) =>
-  safeSend({
-    from: `SkillKwiz <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+  sendEmail({
     to,
     subject: "Assessment Scheduled - SkillKwiz",
     html: `
@@ -93,17 +90,16 @@ const sendAssessmentConfirmation = (to, name, details) =>
     `,
   });
 
-// Send Assessment Request Notification
+// ─── Send Assessment Request Notification ─────────────────────────────────────
 const sendAssessmentRequestNotification = (to, candidateName, employerCompany, skills) =>
-  safeSend({
-    from: `SkillKwiz <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+  sendEmail({
     to,
     subject: `Assessment Invitation from ${employerCompany} - SkillKwiz`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;">
         <h2 style="color:#00418d;">You've Been Invited for an Assessment!</h2>
         <p>Hi ${candidateName},</p>
-        <p><strong>${employerCompany}</strong> has requested a skill assessment for: ${(skills || []).join(", ")}</p>
+        <p><strong>${employerCompany}</strong> has requested a skill assessment for: <strong>${(skills || []).join(", ")}</strong></p>
         <a href="${process.env.CLIENT_URL || "https://skillkwiz-frontend.vercel.app"}/services"
            style="display:inline-block;padding:12px 24px;background:#f73e5d;color:white;border-radius:6px;text-decoration:none;font-weight:bold;margin-top:16px;">
           View Invitation
