@@ -1,6 +1,6 @@
 const { Assessment } = require("../models/Assessment.model");
 const Candidate = require("../models/Candidate.model");
-const { sendAssessmentConfirmation } = require("../utils/email.utils");
+const { sendAssessmentConfirmation, sendAssessmentRequestNotification } = require("../utils/email.utils");
 
 // ─── Schedule Assessment ──────────────────────────────────────────────────────
 // POST /api/assessments/schedule
@@ -150,6 +150,14 @@ const requestAssessment = async (req, res, next) => {
       skills: Array.isArray(skills) ? skills : [skills],
       notes: notes || "",
     });
+
+    // Notify candidate by email (non-blocking)
+    sendAssessmentRequestNotification(
+      candidateEmail,
+      `${candidateFirstName} ${candidateLastName}`,
+      employer.company,
+      Array.isArray(skills) ? skills : [skills]
+    ).catch(console.error);
 
     res.status(201).json({
       success: true,
