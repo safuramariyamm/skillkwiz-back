@@ -18,7 +18,13 @@ const sendOtp = async (req, res, next) => {
     const otp = await saveOTP(identifier, type, purpose || "registration");
 
     if (type === "email") {
-      await sendOtpEmail(identifier, otp);
+      // Send email non-blocking — don't await so Railway timeout doesn't cause 500
+      // OTP is already saved in DB; email is just a delivery mechanism
+      sendOtpEmail(identifier, otp).then((result) => {
+        if (!result.success) {
+          console.error("[Email OTP] Failed:", result.error);
+        }
+      });
     } else {
       // Normalize phone to E.164 format for Twilio
       const normalizePhone = (phone) => {

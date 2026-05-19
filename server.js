@@ -24,6 +24,10 @@ const examBookingRoutes = require("./routes/examBooking.routes");
 
 const app = express();
 
+// Trust Railway's proxy — fixes X-Forwarded-For rate limit warning
+// and ensures correct IP detection behind Railway's load balancer
+app.set("trust proxy", 1);
+
 connectDB();
 
 // ─── CORS — must come before helmet and all routes ───────────────────────────
