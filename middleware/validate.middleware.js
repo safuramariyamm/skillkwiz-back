@@ -92,12 +92,14 @@ const assessmentRequestValidator = [
 const scheduleAssessmentValidator = [
   body("company")
     .notEmpty().withMessage("Company is required")
+    .customSanitizer((val) => (typeof val === "string" ? val.toLowerCase().trim() : val))
     .isIn(["microsoft", "google", "amazon", "meta", "infosys", "other"])
-    .withMessage("Invalid company"),
+    .withMessage("Invalid company — must be one of: microsoft, google, amazon, meta, infosys, other"),
   body("scheduledDate").notEmpty().withMessage("Scheduled date is required").isISO8601(),
   body("scheduledTime").notEmpty().withMessage("Scheduled time is required"),
   body("centre").notEmpty().withMessage("Assessment centre is required"),
   body("zipCode").notEmpty().withMessage("Zip code is required"),
+  body("skills").optional(),
   validate,
 ];
 

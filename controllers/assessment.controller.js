@@ -6,7 +6,9 @@ const { sendAssessmentConfirmation, sendAssessmentRequestNotification } = requir
 // POST /api/assessments/schedule
 const scheduleAssessment = async (req, res, next) => {
   try {
-    const { company, skills, scheduledDate, scheduledTime, centre, country, zipCode } = req.body;
+    const { skills, scheduledDate, scheduledTime, centre, country, zipCode } = req.body;
+    // Normalise company to lowercase so "Microsoft" and "microsoft" both pass the enum check
+    const company = typeof req.body.company === "string" ? req.body.company.toLowerCase().trim() : req.body.company;
 
     const candidate = await Candidate.findOne({ user: req.user._id });
     if (!candidate) {
@@ -20,13 +22,18 @@ const scheduleAssessment = async (req, res, next) => {
       status: "scheduled",
     });
     if (existing) {
-      return res.status(409).json({ success: false, message: "You already have an assessment scheduled on this date" });
+      return res.status(409).json({ success: false, message: "You already have an assessment scheduled on this date. Please choose a different date." });
     }
+
+    // Use skills from body if provided, otherwise fall back to candidate's skills from profile
+    const assessmentSkills = (Array.isArray(skills) && skills.length > 0)
+      ? skills
+      : (candidate.skills || []);
 
     const assessment = await Assessment.create({
       candidate: candidate._id,
       company,
-      skills,
+      skills: assessmentSkills,
       scheduledDate: new Date(scheduledDate),
       scheduledTime,
       centre,
@@ -34,13 +41,13 @@ const scheduleAssessment = async (req, res, next) => {
       zipCode,
     });
 
-    // Add to candidate's assessments
+    // Add to candidate's assessments array
     await Candidate.updateOne({ _id: candidate._id }, { $push: { assessments: assessment._id } });
 
-    // Send confirmation email
+    // Send confirmation email (non-blocking)
     sendAssessmentConfirmation(req.user.email, req.user.name, {
       company,
-      date: new Date(scheduledDate).toLocaleDateString(),
+      date: new Date(scheduledDate).toLocaleDateString("en-IN"),
       time: scheduledTime,
       centre,
     })
